@@ -79,6 +79,12 @@ public class HiddenHostForm : Form
                 if (!string.IsNullOrEmpty(text))
                     HistoryStore.Add(history, text);
             }
+            else if (Clipboard.ContainsImage())
+            {
+                using var img = Clipboard.GetImage();
+                if (img != null)
+                    HistoryStore.AddImage(history, img);
+            }
         }
         catch
         {
@@ -100,11 +106,20 @@ public class HiddenHostForm : Form
         popup.Activate();
     }
 
-    private void OnItemChosen(string text)
+    private void OnItemChosen(ClipItem item)
     {
         try
         {
-            Clipboard.SetText(text);
+            if (item.IsImage && item.ImageData != null)
+            {
+                using var ms = new MemoryStream(item.ImageData);
+                using var img = Image.FromStream(ms);
+                Clipboard.SetImage(img);
+            }
+            else
+            {
+                Clipboard.SetText(item.Text);
+            }
         }
         catch
         {
@@ -220,7 +235,6 @@ public class HiddenHostForm : Form
         base.Dispose(disposing);
     }
 
-    // TODO: make interval configurable in a settings file
     private class DarkMenuRenderer : ToolStripProfessionalRenderer
     {
         public DarkMenuRenderer() : base(new DarkColors()) { }

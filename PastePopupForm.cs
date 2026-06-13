@@ -7,9 +7,11 @@ public class PastePopupForm : Form
 {
     private readonly ListBox listBox;
     private readonly List<ClipItem> items;
-    private readonly Action<string> onSelect;
-    private const int ItemHeight = 44;
+    private readonly Action<ClipItem> onSelect;
+    private const int TextItemHeight = 44;
+    private const int ImageItemHeight = 80;
     private const int MaxPreviewLen = 60;
+    private const int ThumbSize = 64;
 
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
@@ -18,7 +20,7 @@ public class PastePopupForm : Form
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
-    public PastePopupForm(List<ClipItem> items, Action<string> onSelect)
+    public PastePopupForm(List<ClipItem> items, Action<ClipItem> onSelect)
     {
         this.items = items;
         this.onSelect = onSelect;
@@ -27,9 +29,8 @@ public class PastePopupForm : Form
         TopMost = true;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
-        int count = items.Count == 0 ? 1 : Math.Min(items.Count, 10);
-        Size = new Size(420, count * ItemHeight);
-        MinimumSize = new Size(280, ItemHeight);
+        Size = new Size(420, CalcHeight(items));
+        MinimumSize = new Size(280, TextItemHeight);
         BackColor = Color.FromArgb(30, 30, 30);
 
         _ = Handle;
@@ -42,8 +43,7 @@ public class PastePopupForm : Form
             BackColor = Color.FromArgb(30, 30, 30),
             ForeColor = Color.FromArgb(220, 220, 220),
             Font = new Font("Segoe UI", 9f),
-            ItemHeight = ItemHeight,
-            DrawMode = DrawMode.OwnerDrawFixed
+            DrawMode = DrawMode.OwnerDrawVariable
         };
 
         if (items.Count == 0)
@@ -57,6 +57,7 @@ public class PastePopupForm : Form
                 listBox.Items.Add(item);
         }
 
+        listBox.MeasureItem += OnMeasureItem;
         listBox.DrawItem += OnDrawItem;
         listBox.DoubleClick += (_, _) => SelectCurrent();
         listBox.KeyDown += (_, e) =>
@@ -70,6 +71,16 @@ public class PastePopupForm : Form
         Deactivate += (_, _) => Close();
         KeyPreview = true;
         KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) Close(); };
+    }
+
+    private static int CalcHeight(List<ClipItem> items)
+    {
+        if (items.Count == 0) return TextItemHeight;
+        int visible = Math.Min(items.Count, 10);
+        int h = 0;
+        for (int i = 0; i < visible; i++)
+            h += items[i].IsImage ? ImageItemHeight : TextItemHeight;
+        return h;
     }
 
     protected override CreateParams CreateParams
@@ -125,6 +136,17 @@ public class PastePopupForm : Form
         }
     }
 
+    private void OnMeasureItem(object? sender, MeasureItemEventArgs e)
+    {
+        if (items.Count == 0 || e.Index < 0 || e.Index >= items.Count)
+        {
+            e.ItemHeight = TextItemHeight;
+            return;
+        }
+
+        e.ItemHeight = items[e.Index].IsImage ? ImageItemHeight : TextItemHeight;
+    }
+
     private void OnDrawItem(object? sender, DrawItemEventArgs e)
     {
         if (e.Index < 0) return;
@@ -141,12 +163,18 @@ public class PastePopupForm : Form
         if (items.Count == 0)
             return;
 
-        var item = (ClipItem?)listBox.Items[e.Index];
-        if (item == null) return;
-
         using var sepPen = new Pen(Color.FromArgb(42, 42, 42));
         g.DrawLine(sepPen, rect.Left, rect.Top, rect.Right, rect.Top);
 
+        var item = items[e.Index];
+        if (item.IsImage)
+            DrawImageItem(g, rect, item, selected);
+        else
+            DrawTextItem(g, rect, item, selected);
+    }
+
+    private void DrawTextItem(Graphics g, Rectangle rect, ClipItem item, bool selected)
+    {
         using var previewFont = new Font("Segoe UI", 9.5f);
         using var textBrush = new SolidBrush(selected ? Color.White : Color.FromArgb(220, 220, 220));
         string preview = BuildPreview(item.Text);
@@ -155,9 +183,56 @@ public class PastePopupForm : Form
 
         using var timeFont = new Font("Segoe UI", 8f);
         using var timeBrush = new SolidBrush(Color.FromArgb(130, 130, 130));
-        string timeStr = FormatTime(item.Time);
         var timeRect = new Rectangle(rect.Left + 12, rect.Bottom - 18, rect.Width - 24, 14);
-        g.DrawString(timeStr, timeFont, timeBrush, timeRect);
+        g.DrawString(FormatTime(item.Time), timeFont, timeBrush, timeRect);
+    }
+
+    private void DrawImageItem(Graphics g, Rectangle rect, ClipItem item, bool selected)
+    {
+        int thumbX = rect.Left + 10;
+        int thumbY = rect.Top + (rect.Height - ThumbSize) / 2;
+
+        using var framePen = new Pen(Color.FromArgb(60, 60, 60));
+        g.DrawRectangle(framePen, thumbX - 1, thumbY - 1, ThumbSize + 1, ThumbSize + 1);
+
+        try
+        {
+            using var ms = new MemoryStream(item.ImageData!);
+            using var img = Image.FromStream(ms);
+            using var thumb = new Bitmap(img, ThumbSize, ThumbSize);
+            g.DrawImage(thumb, thumbX, thumbY);
+        }
+        catch
+        {
+            using var font = new Font("Segoe UI", 7f);
+            using var brush = new SolidBrush(Color.FromArgb(100, 100, 100));
+            g.DrawString("preview", font, brush, thumbX + 8, thumbY + 24);
+        }
+
+        using var infoFont = new Font("Segoe UI", 9f);
+        using var infoBrush = new SolidBrush(selected ? Color.White : Color.FromArgb(220, 220, 220));
+        int labelX = thumbX + ThumbSize + 14;
+        g.DrawString("Image", infoFont, infoBrush, new Rectangle(labelX, rect.Top + 10, rect.Right - labelX - 10, 18));
+
+        using var dimFont = new Font("Segoe UI", 8f);
+        using var dimBrush = new SolidBrush(Color.FromArgb(130, 130, 130));
+        string dims = "";
+        try
+        {
+            using var ms2 = new MemoryStream(item.ImageData!);
+            using var img2 = Image.FromStream(ms2);
+            dims = $"{img2.Width} × {img2.Height} px";
+        }
+        catch
+        {
+            dims = "";
+        }
+        g.DrawString(dims, dimFont, dimBrush, new Rectangle(labelX, rect.Top + 30, rect.Right - labelX - 10, 16));
+
+        using var timeFont = new Font("Segoe UI", 8f);
+        using var timeBrush = new SolidBrush(Color.FromArgb(130, 130, 130));
+        g.DrawString(FormatTime(item.Time), timeFont, timeBrush,
+                     new Rectangle(labelX, rect.Bottom - 18, rect.Right - labelX - 10, 14));
     }
 
     private static string FormatTime(DateTime dt)
@@ -181,9 +256,9 @@ public class PastePopupForm : Form
         int idx = listBox.SelectedIndex;
         if (idx >= 0 && idx < items.Count)
         {
-            string text = items[idx].Text;
+            var item = items[idx];
             Close();
-            onSelect(text);
+            onSelect(item);
         }
     }
 }

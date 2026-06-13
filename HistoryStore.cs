@@ -4,7 +4,7 @@ namespace lpastlai;
 
 public static class HistoryStore
 {
-    public const int MaxItems = 20;
+    public const int MaxItems = 30;
 
     private static readonly string FolderPath =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "lpastlai");
@@ -52,6 +52,20 @@ public static class HistoryStore
 
         items.RemoveAll(i => i.Text == text);
         items.Insert(0, new ClipItem { Text = text, Time = DateTime.Now });
+
+        if (items.Count > MaxItems)
+            items.RemoveRange(MaxItems, items.Count - MaxItems);
+
+        Save(items);
+    }
+
+    public static void AddImage(List<ClipItem> items, Image image)
+    {
+        using var ms = new MemoryStream();
+        image.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+        byte[] data = ms.ToArray();
+
+        items.Insert(0, new ClipItem { ImageData = data, Time = DateTime.Now });
 
         if (items.Count > MaxItems)
             items.RemoveRange(MaxItems, items.Count - MaxItems);
