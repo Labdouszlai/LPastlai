@@ -51,7 +51,7 @@ public class PastePopupForm : Form
         Size = new Size(660, h);
         MinimumSize = new Size(400, 160);
         BackColor = Color.FromArgb(30, 30, 30);
-        Icon = new Icon("app.ico");
+        Icon = Program.LoadAppIcon();
 
         _ = Handle;
 

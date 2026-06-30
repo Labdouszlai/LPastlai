@@ -34,7 +34,7 @@ public class SettingsForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(320, 240);
         BackColor = Color.FromArgb(30, 30, 30);
-        Icon = new Icon("app.ico");
+        Icon = Program.LoadAppIcon();
         _ = Handle;
 
         var title = new Label

@@ -218,7 +218,7 @@ public class HiddenHostForm : Form
 
     private Icon CreateTrayIcon()
     {
-        return new Icon("app.ico");
+        return Program.LoadAppIcon();
     }
 
     private void ExitApp()
