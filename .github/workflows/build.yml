@@ -30,12 +30,13 @@ jobs:
           dotnet publish -c Release -r ${{ matrix.rid }} `
             --self-contained false `
             -p:PublishSingleFile=true -p:DebugType=none
+          copy bin/Release/net8.0-windows/${{ matrix.rid }}/publish/lpastlai.exe lpastlai-${{ matrix.rid }}.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: lpastlai-${{ matrix.rid }}
-          path: bin/Release/net8.0-windows/${{ matrix.rid }}/publish/lpastlai.exe
+          path: lpastlai-${{ matrix.rid }}.exe
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
