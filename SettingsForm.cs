@@ -37,7 +37,7 @@ public class SettingsForm : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.CenterScreen;
-        Size = new Size(380, 420);
+        Size = new Size(500, 300);
         BackColor = Color.FromArgb(30, 30, 30);
         Icon = Program.LoadAppIcon();
         _ = Handle;
@@ -46,7 +46,7 @@ public class SettingsForm : Form
         {
             Text = "Settings",
             Dock = DockStyle.Top,
-            Height = 30,
+            Height = 28,
             Font = new Font("Segoe UI Semibold", 10f),
             ForeColor = Color.FromArgb(180, 180, 180),
             BackColor = Color.FromArgb(38, 38, 38),
@@ -54,89 +54,14 @@ public class SettingsForm : Form
             Padding = new Padding(12, 0, 0, 0)
         };
 
-        var wrap = new FlowLayoutPanel
+        var btnPanel = new Panel
         {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            Padding = new Padding(14, 10, 14, 10),
+            Dock = DockStyle.Bottom,
+            Height = 36,
             BackColor = Color.FromArgb(30, 30, 30),
-            AutoScroll = true
+            Padding = new Padding(0, 0, 12, 6)
         };
 
-        AddSectionHeader(wrap, "Hotkey");
-
-        wrap.Controls.Add(MakeLabel("Modifiers:"));
-        chkCtrl = MakeCheck("Ctrl");
-        chkAlt = MakeCheck("Alt");
-        chkShift = MakeCheck("Shift");
-        chkWin = MakeCheck("Win");
-        var mods = new FlowLayoutPanel
-        {
-            FlowDirection = FlowDirection.LeftToRight,
-            Size = new Size(340, 24),
-            BackColor = Color.Transparent
-        };
-        mods.Controls.AddRange(new Control[] { chkCtrl, chkAlt, chkShift, chkWin });
-        wrap.Controls.Add(mods);
-
-        var keyLabel = MakeLabel("Key:");
-        keyLabel.Margin = new Padding(0, 6, 0, 0);
-        wrap.Controls.Add(keyLabel);
-
-        keyDisplay = new Label
-        {
-            Text = NativeMethods.KeyName(settings.HotkeyKey),
-            Font = new Font("Segoe UI", 11f, FontStyle.Bold),
-            ForeColor = Color.White,
-            BackColor = Color.FromArgb(50, 50, 55),
-            TextAlign = ContentAlignment.MiddleCenter,
-            Size = new Size(120, 32),
-            Cursor = Cursors.Hand
-        };
-        keyDisplay.Click += (_, _) => StartCapture();
-        wrap.Controls.Add(keyDisplay);
-
-        AddSectionHeader(wrap, "Display");
-
-        numText = MakeNud(wrap, "Max text items:", settings.MaxTextItems, 1, 50, 0, 10);
-        numImg = MakeNud(wrap, "Max image items:", settings.MaxImageItems, 1, 50, 0, 6);
-
-        AddSectionHeader(wrap, "Theme");
-
-        var bgRow = new FlowLayoutPanel
-        {
-            FlowDirection = FlowDirection.LeftToRight,
-            Size = new Size(340, 28),
-            BackColor = Color.Transparent,
-            Margin = new Padding(0, 0, 0, 4)
-        };
-        var bgLabel = MakeLabel("Background:");
-        bgLabel.Size = new Size(130, 22);
-        bgPanel = MakeColorPanel(settings.BgColor, OnBgClick);
-        bgRow.Controls.Add(bgLabel);
-        bgRow.Controls.Add(bgPanel);
-        wrap.Controls.Add(bgRow);
-
-        var fgRow = new FlowLayoutPanel
-        {
-            FlowDirection = FlowDirection.LeftToRight,
-            Size = new Size(340, 28),
-            BackColor = Color.Transparent,
-            Margin = new Padding(0, 0, 0, 10)
-        };
-        var fgLabel = MakeLabel("Font color:");
-        fgLabel.Size = new Size(130, 22);
-        fgPanel = MakeColorPanel(settings.FgColor, OnFgClick);
-        fgRow.Controls.Add(fgLabel);
-        fgRow.Controls.Add(fgPanel);
-        wrap.Controls.Add(fgRow);
-
-        var btnRow = new FlowLayoutPanel
-        {
-            FlowDirection = FlowDirection.RightToLeft,
-            Size = new Size(340, 32),
-            BackColor = Color.Transparent
-        };
         var saveBtn = new Button
         {
             Text = "Save Settings",
@@ -145,9 +70,10 @@ public class SettingsForm : Form
             BackColor = Color.FromArgb(0, 103, 192),
             ForeColor = Color.White,
             FlatAppearance = { BorderSize = 0 },
-            Size = new Size(80, 30)
+            Size = new Size(100, 28)
         };
         saveBtn.Click += (_, _) => SaveAndClose();
+
         var cancelBtn = new Button
         {
             Text = "Cancel",
@@ -156,15 +82,87 @@ public class SettingsForm : Form
             BackColor = Color.FromArgb(50, 50, 55),
             ForeColor = Color.FromArgb(180, 180, 180),
             FlatAppearance = { BorderSize = 0 },
-            Size = new Size(80, 30),
-            Margin = new Padding(0, 0, 8, 0)
+            Size = new Size(80, 28)
         };
         cancelBtn.Click += (_, _) => Close();
-        btnRow.Controls.Add(saveBtn);
-        btnRow.Controls.Add(cancelBtn);
-        wrap.Controls.Add(btnRow);
 
-        Controls.Add(wrap);
+        saveBtn.Location = new Point(btnPanel.Width - saveBtn.Width - cancelBtn.Width - 6, 2);
+        cancelBtn.Location = new Point(btnPanel.Width - cancelBtn.Width, 2);
+        btnPanel.Controls.Add(saveBtn);
+        btnPanel.Controls.Add(cancelBtn);
+        btnPanel.Resize += (_, _) =>
+        {
+            saveBtn.Location = new Point(btnPanel.Width - saveBtn.Width - cancelBtn.Width - 6, 2);
+            cancelBtn.Location = new Point(btnPanel.Width - cancelBtn.Width, 2);
+        };
+
+        var table = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 9,
+            BackColor = Color.FromArgb(30, 30, 30),
+            Padding = new Padding(14, 6, 14, 0)
+        };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+
+        AddHeader(table, "HOTKEY", 0);
+        AddHeader(table, "DISPLAY", 3);
+        AddHeader(table, "THEME", 6);
+
+        chkCtrl = MakeCheck("Ctrl");
+        chkAlt = MakeCheck("Alt");
+        chkShift = MakeCheck("Shift");
+        chkWin = MakeCheck("Win");
+        var mods = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            Margin = new Padding(0)
+        };
+        mods.Controls.AddRange(new Control[] { chkCtrl, chkAlt, chkShift, chkWin });
+        table.Controls.Add(mods, 0, 1);
+        table.SetColumnSpan(mods, 2);
+
+        table.Controls.Add(MakeLabel("Key:"), 0, 2);
+        keyDisplay = new Label
+        {
+            Text = NativeMethods.KeyName(settings.HotkeyKey),
+            Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(50, 50, 55),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Dock = DockStyle.Fill,
+            Cursor = Cursors.Hand
+        };
+        keyDisplay.Click += (_, _) => StartCapture();
+        table.Controls.Add(keyDisplay, 1, 2);
+
+        numText = AddNudRow(table, "Max text items:", settings.MaxTextItems, 4);
+        numImg = AddNudRow(table, "Max image items:", settings.MaxImageItems, 5);
+
+        table.Controls.Add(MakeLabel("Background:"), 0, 7);
+        bgPanel = MakeColorPanel(settings.BgColor, OnBgClick);
+        table.Controls.Add(bgPanel, 1, 7);
+
+        table.Controls.Add(MakeLabel("Font color:"), 0, 8);
+        fgPanel = MakeColorPanel(settings.FgColor, OnFgClick);
+        table.Controls.Add(fgPanel, 1, 8);
+
+        Controls.Add(table);
+        Controls.Add(btnPanel);
         Controls.Add(title);
 
         KeyPreview = true;
@@ -172,17 +170,18 @@ public class SettingsForm : Form
         SyncChecks();
     }
 
-    private static void AddSectionHeader(FlowLayoutPanel parent, string text)
+    private static void AddHeader(TableLayoutPanel table, string text, int row)
     {
-        parent.Controls.Add(new Label
+        table.Controls.Add(new Label
         {
             Text = text,
-            Font = new Font("Segoe UI Semibold", 9.5f),
+            Font = new Font("Segoe UI Semibold", 9f),
             ForeColor = Color.FromArgb(0, 130, 220),
             BackColor = Color.Transparent,
-            Size = new Size(340, 20),
-            Margin = new Padding(0, 8, 0, 2)
-        });
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft
+        }, 0, row);
+        table.SetColumnSpan(table.GetControlFromPosition(0, row), 2);
     }
 
     private static Label MakeLabel(string text)
@@ -192,38 +191,26 @@ public class SettingsForm : Form
             Text = text,
             Font = new Font("Segoe UI", 9f),
             ForeColor = Color.FromArgb(180, 180, 180),
-            Size = new Size(340, 18)
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft
         };
     }
 
-    private static NumericUpDown MakeNud(FlowLayoutPanel parent, string label, int value, int min, int max, int topMargin, int bottomMargin)
+    private static NumericUpDown AddNudRow(TableLayoutPanel table, string text, int value, int row)
     {
-        var row = new FlowLayoutPanel
-        {
-            FlowDirection = FlowDirection.LeftToRight,
-            Size = new Size(340, 28),
-            BackColor = Color.Transparent,
-            Margin = new Padding(0, topMargin, 0, bottomMargin)
-        };
-        row.Controls.Add(new Label
-        {
-            Text = label,
-            Font = new Font("Segoe UI", 9f),
-            ForeColor = Color.FromArgb(180, 180, 180),
-            Size = new Size(200, 22)
-        });
+        table.Controls.Add(MakeLabel(text), 0, row);
         var nud = new NumericUpDown
         {
             Value = value,
-            Minimum = min,
-            Maximum = max,
-            Width = 60,
+            Minimum = 1,
+            Maximum = 50,
+            Width = 70,
             BackColor = Color.FromArgb(50, 50, 55),
             ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.FixedSingle,
+            Margin = new Padding(0, 2, 0, 2)
         };
-        row.Controls.Add(nud);
-        parent.Controls.Add(row);
+        table.Controls.Add(nud, 1, row);
         return nud;
     }
 
@@ -231,10 +218,12 @@ public class SettingsForm : Form
     {
         var p = new Panel
         {
-            Size = new Size(100, 22),
+            Width = 80,
+            Height = 20,
             BackColor = c,
             Cursor = Cursors.Hand,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.FixedSingle,
+            Margin = new Padding(0, 3, 0, 3)
         };
         p.Click += onClick;
         return p;
@@ -268,6 +257,7 @@ public class SettingsForm : Form
             Font = new Font("Segoe UI", 9f),
             ForeColor = Color.FromArgb(200, 200, 200),
             BackColor = Color.Transparent,
+            Margin = new Padding(0, 0, 8, 0),
             AutoSize = true
         };
     }
