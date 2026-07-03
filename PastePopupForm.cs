@@ -19,7 +19,12 @@ public class PastePopupForm : Form
     private const int MaxPreview = 60;
     private const int Thumb = 64;
     private const int StarSize = 18;
-    private const int StarRightMargin = 8;
+    private const int XSize = 16;
+    private const int XRightMargin = 6;
+    private const int XStarGap = 4;
+    private const int TextRightMargin = 8;
+    private const int ClearBtnH = 36;
+    private int hoveredImgIndex = -1;
 
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
@@ -50,7 +55,7 @@ public class PastePopupForm : Form
         int h = Math.Max(
             maxText > 0 ? maxText * TextItemH : TextItemH,
             maxImg > 0 ? maxImg * ImgItemH : ImgItemH
-        ) + 28;
+        ) + 28 + ClearBtnH;
 
         FormBorderStyle = FormBorderStyle.None;
         TopMost = true;
@@ -67,13 +72,14 @@ public class PastePopupForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 2,
+            RowCount = 3,
             BackColor = settings.BgColor
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ClearBtnH));
 
         var textHeader = MakeHeader("Text");
         var imgHeader = MakeHeader("Images");
@@ -91,8 +97,23 @@ public class PastePopupForm : Form
         textList.DrawItem += OnDrawTextItem;
         imgList.DrawItem += OnDrawImgItem;
 
-        textList.MouseClick += (_, e) => HandleStarClick(e, textList, textItems);
-        imgList.MouseClick += (_, e) => HandleStarClick(e, imgList, imgItems);
+        textList.MouseClick += (_, e) => HandleItemClick(e, textList, textItems);
+        imgList.MouseClick += (_, e) => HandleItemClick(e, imgList, imgItems);
+        imgList.MouseMove += (_, e) =>
+        {
+            int idx = imgList.IndexFromPoint(e.Location);
+            if (idx != hoveredImgIndex)
+            {
+                hoveredImgIndex = idx;
+                imgList.Invalidate();
+            }
+        };
+        imgList.MouseLeave += (_, _) =>
+        {
+            hoveredImgIndex = -1;
+            imgList.Invalidate();
+        };
+        textList.MouseLeave += (_, _) => hoveredImgIndex = -1;
 
         textList.DoubleClick += (_, _) => Pick(textList, textItems);
         imgList.DoubleClick += (_, _) => Pick(imgList, imgItems);
@@ -102,6 +123,26 @@ public class PastePopupForm : Form
 
         layout.Controls.Add(textList, 0, 1);
         layout.Controls.Add(imgList, 1, 1);
+
+        var clearAllBtn = new Button
+        {
+            Text = "Clear All",
+            Dock = DockStyle.Fill,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(200, 50, 50),
+            ForeColor = Color.White,
+            FlatAppearance = { BorderSize = 0 },
+            Font = new Font("Segoe UI Semibold", 9f),
+            Cursor = Cursors.Hand,
+            Margin = new Padding(4, 2, 4, 4)
+        };
+        clearAllBtn.Click += (_, _) =>
+        {
+            HistoryStore.Clear(allItems);
+            Close();
+        };
+        layout.Controls.Add(clearAllBtn, 0, 2);
+        layout.SetColumnSpan(clearAllBtn, 2);
 
         Controls.Add(layout);
 
@@ -176,33 +217,39 @@ public class PastePopupForm : Form
         }
     }
 
-    private void HandleStarClick(MouseEventArgs e, ListBox list, List<ClipItem> source)
+    private void HandleItemClick(MouseEventArgs e, ListBox list, List<ClipItem> source)
     {
         int idx = list.IndexFromPoint(e.Location);
         if (idx < 0 || idx >= source.Count) return;
 
-        int itemH = source == imgItems ? ImgItemH : TextItemH;
-        int starLeft = list.ClientSize.Width - StarSize - StarRightMargin;
-
-        if (e.X < starLeft) return;
-
         var item = source[idx];
-        ToggleFavorite(item);
 
-        if (favoritesOnly)
+        int xLeft = list.ClientSize.Width - XRightMargin - XSize;
+        int starLeft = xLeft - XStarGap - StarSize;
+
+        if (e.X >= xLeft)
         {
-            source.RemoveAt(idx);
-            list.Items.RemoveAt(idx);
-            if (source.Count == 0)
-            {
-                list.Items.Add("(no favorites)");
-                list.Enabled = false;
-            }
-            list.Invalidate();
+            DeleteItem(item, list, source, idx);
         }
-        else
+        else if (e.X >= starLeft)
         {
-            list.Invalidate(list.GetItemRectangle(idx));
+            ToggleFavorite(item);
+
+            if (favoritesOnly)
+            {
+                source.RemoveAt(idx);
+                list.Items.RemoveAt(idx);
+                if (source.Count == 0)
+                {
+                    list.Items.Add("(no favorites)");
+                    list.Enabled = false;
+                }
+                list.Invalidate();
+            }
+            else
+            {
+                list.Invalidate(list.GetItemRectangle(idx));
+            }
         }
     }
 
@@ -212,6 +259,23 @@ public class PastePopupForm : Form
         if (original != null)
             original.IsFavorited = !original.IsFavorited;
         HistoryStore.Save(allItems);
+    }
+
+    private void DeleteItem(ClipItem item, ListBox list, List<ClipItem> source, int idx)
+    {
+        var original = allItems.Find(i => ReferenceEquals(i, item));
+        if (original != null)
+            allItems.Remove(original);
+        HistoryStore.Save(allItems);
+        source.RemoveAt(idx);
+        list.Items.RemoveAt(idx);
+        if (source.Count == 0)
+        {
+            string placeholder = source == imgItems ? "(no images)" : "(no text)";
+            list.Items.Add(placeholder);
+            list.Enabled = false;
+        }
+        list.Invalidate();
     }
 
     private void Pick(ListBox list, List<ClipItem> source)
@@ -295,13 +359,19 @@ public class PastePopupForm : Form
 
         var item = textItems[e.Index];
 
-        int starLeft = r.Right - StarSize - StarRightMargin;
-        int starTop = r.Top + (r.Height - StarSize) / 2;
+        int xLeft = r.Right - XRightMargin - XSize;
+        int starLeft = xLeft - XStarGap - StarSize;
+        int centerY = r.Top + (r.Height - StarSize) / 2;
+
         using var sf = new Font("Segoe UI", 11f, FontStyle.Bold);
         using var sb = new SolidBrush(item.IsFavorited ? Color.FromArgb(255, 200, 50) : Shift(settings.FgColor, 0.3f));
-        g.DrawString(item.IsFavorited ? "â˜…" : "â˜†", sf, sb, starLeft, starTop);
+        g.DrawString(item.IsFavorited ? "â˜…" : "â˜†", sf, sb, starLeft, centerY);
 
-        int textRight = starLeft - 8;
+        using var xf = new Font("Segoe UI", 10f, FontStyle.Bold);
+        using var xb = new SolidBrush(Shift(settings.FgColor, 0.4f));
+        g.DrawString("Ã—", xf, xb, xLeft, centerY - 1);
+
+        int textRight = starLeft - TextRightMargin;
         var textR = new Rectangle(r.Left + 10, r.Top + 6, textRight - r.Left - 10, r.Height - 24);
         string preview = TextPreview(item.Text);
 
@@ -351,11 +421,20 @@ public class PastePopupForm : Form
             g.DrawString("err", f, b, tx + 20, ty + 24);
         }
 
-        int starLeft = r.Right - StarSize - StarRightMargin;
-        int starTop = r.Top + (r.Height - StarSize) / 2;
+        int xLeft = r.Right - XRightMargin - XSize;
+        int starLeft = xLeft - XStarGap - StarSize;
+        int centerY = r.Top + (r.Height - StarSize) / 2;
+
         using var sf = new Font("Segoe UI", 11f, FontStyle.Bold);
         using var sb = new SolidBrush(item.IsFavorited ? Color.FromArgb(255, 200, 50) : Shift(settings.FgColor, 0.3f));
-        g.DrawString(item.IsFavorited ? "â˜…" : "â˜†", sf, sb, starLeft, starTop);
+        g.DrawString(item.IsFavorited ? "â˜…" : "â˜†", sf, sb, starLeft, centerY);
+
+        if (hoveredImgIndex == e.Index)
+        {
+            using var xf = new Font("Segoe UI", 10f, FontStyle.Bold);
+            using var xb = new SolidBrush(Shift(settings.FgColor, 0.4f));
+            g.DrawString("Ã—", xf, xb, xLeft, centerY - 1);
+        }
 
         int lx = tx + Thumb + 12;
         using var nf = new Font("Segoe UI", 9f);
