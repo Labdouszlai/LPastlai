@@ -13,6 +13,8 @@ public class PastePopupForm : Form
     private readonly List<ClipItem> imgItems = new();
     private readonly AppSettings settings;
     private readonly bool favoritesOnly;
+    private readonly Dictionary<ClipItem, Bitmap> thumbCache = new();
+    private int hoveredImgIndex = -1;
 
     private const int TextItemH = 44;
     private const int ImgItemH = 80;
@@ -24,7 +26,13 @@ public class PastePopupForm : Form
     private const int XStarGap = 4;
     private const int TextRightMargin = 8;
     private const int ClearBtnH = 36;
-    private int hoveredImgIndex = -1;
+
+    private static readonly Font FontStar = new("Segoe UI", 11f, FontStyle.Bold);
+    private static readonly Font FontX = new("Segoe UI", 10f, FontStyle.Bold);
+    private static readonly Font FontText = new("Segoe UI", 9.5f);
+    private static readonly Font FontTime = new("Segoe UI", 8f);
+    private static readonly Font FontName = new("Segoe UI", 9f);
+    private static readonly Font FontError = new("Segoe UI", 7f);
 
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
@@ -45,9 +53,20 @@ public class PastePopupForm : Form
             if (favoritesOnly && !item.IsFavorited)
                 continue;
             if (item.IsImage)
+            {
                 imgItems.Add(item);
+                try
+                {
+                    using var ms = new MemoryStream(item.ImageData!);
+                    using var img = Image.FromStream(ms);
+                    thumbCache[item] = new Bitmap(img, Thumb, Thumb);
+                }
+                catch { }
+            }
             else
+            {
                 textItems.Add(item);
+            }
         }
 
         int maxText = Math.Min(textItems.Count, settings.MaxTextItems);
@@ -104,16 +123,25 @@ public class PastePopupForm : Form
             int idx = imgList.IndexFromPoint(e.Location);
             if (idx != hoveredImgIndex)
             {
+                int oldIdx = hoveredImgIndex;
                 hoveredImgIndex = idx;
-                imgList.Invalidate();
+                if (oldIdx >= 0 && oldIdx < imgList.Items.Count)
+                    imgList.Invalidate(imgList.GetItemRectangle(oldIdx));
+                if (idx >= 0 && idx < imgList.Items.Count)
+                    imgList.Invalidate(imgList.GetItemRectangle(idx));
             }
         };
         imgList.MouseLeave += (_, _) =>
         {
-            hoveredImgIndex = -1;
-            imgList.Invalidate();
+            if (hoveredImgIndex >= 0)
+            {
+                int oldIdx = hoveredImgIndex;
+                hoveredImgIndex = -1;
+                if (oldIdx < imgList.Items.Count)
+                    imgList.Invalidate(imgList.GetItemRectangle(oldIdx));
+            }
         };
-        textList.MouseLeave += (_, _) => hoveredImgIndex = -1;
+        textList.MouseLeave += (_, _) => { };
 
         textList.DoubleClick += (_, _) => Pick(textList, textItems);
         imgList.DoubleClick += (_, _) => Pick(imgList, imgItems);
@@ -263,6 +291,11 @@ public class PastePopupForm : Form
 
     private void DeleteItem(ClipItem item, ListBox list, List<ClipItem> source, int idx)
     {
+        if (thumbCache.TryGetValue(item, out var thumb))
+        {
+            thumb.Dispose();
+            thumbCache.Remove(item);
+        }
         var original = allItems.Find(i => ReferenceEquals(i, item));
         if (original != null)
             allItems.Remove(original);
@@ -363,25 +396,21 @@ public class PastePopupForm : Form
         int starLeft = xLeft - XStarGap - StarSize;
         int centerY = r.Top + (r.Height - StarSize) / 2;
 
-        using var sf = new Font("Segoe UI", 11f, FontStyle.Bold);
         using var sb = new SolidBrush(item.IsFavorited ? Color.FromArgb(255, 200, 50) : Shift(settings.FgColor, 0.3f));
-        g.DrawString(item.IsFavorited ? "â˜…" : "â˜†", sf, sb, starLeft, centerY);
+        g.DrawString(item.IsFavorited ? "â˜…" : "â˜†", FontStar, sb, starLeft, centerY);
 
-        using var xf = new Font("Segoe UI", 10f, FontStyle.Bold);
         using var xb = new SolidBrush(Shift(settings.FgColor, 0.4f));
-        g.DrawString("Ã—", xf, xb, xLeft, centerY - 1);
+        g.DrawString("Ã—", FontX, xb, xLeft, centerY - 1);
 
         int textRight = starLeft - TextRightMargin;
         var textR = new Rectangle(r.Left + 10, r.Top + 6, textRight - r.Left - 10, r.Height - 24);
         string preview = TextPreview(item.Text);
 
-        using var pf = new Font("Segoe UI", 9.5f);
         using var tb = new SolidBrush(sel ? settings.FgColor : settings.FgColor);
-        g.DrawString(preview, pf, tb, textR);
+        g.DrawString(preview, FontText, tb, textR);
 
-        using var tf = new Font("Segoe UI", 8f);
         using var tim = new SolidBrush(Shift(settings.FgColor, 0.4f));
-        g.DrawString(TimeAgo(item.Time), tf, tim, r.Left + 10, r.Bottom - 18);
+        g.DrawString(TimeAgo(item.Time), FontTime, tim, r.Left + 10, r.Bottom - 18);
     }
 
     private void OnDrawImgItem(object? sender, DrawItemEventArgs e)
@@ -407,41 +436,33 @@ public class PastePopupForm : Form
         using var frame = new Pen(Shift(settings.BgColor, 0.12f));
         g.DrawRectangle(frame, tx, ty, Thumb, Thumb);
 
-        try
+        if (thumbCache.TryGetValue(item, out var cachedThumb))
         {
-            using var ms = new MemoryStream(item.ImageData!);
-            using var img = Image.FromStream(ms);
-            using var thumb = new Bitmap(img, Thumb, Thumb);
-            g.DrawImage(thumb, tx, ty);
+            g.DrawImage(cachedThumb, tx, ty);
         }
-        catch
+        else
         {
-            using var f = new Font("Segoe UI", 7f);
             using var b = new SolidBrush(Shift(settings.FgColor, 0.5f));
-            g.DrawString("err", f, b, tx + 20, ty + 24);
+            g.DrawString("err", FontError, b, tx + 20, ty + 24);
         }
 
         int xLeft = r.Right - XRightMargin - XSize;
         int starLeft = xLeft - XStarGap - StarSize;
         int centerY = r.Top + (r.Height - StarSize) / 2;
 
-        using var sf = new Font("Segoe UI", 11f, FontStyle.Bold);
         using var sb = new SolidBrush(item.IsFavorited ? Color.FromArgb(255, 200, 50) : Shift(settings.FgColor, 0.3f));
-        g.DrawString(item.IsFavorited ? "â˜…" : "â˜†", sf, sb, starLeft, centerY);
+        g.DrawString(item.IsFavorited ? "â˜…" : "â˜†", FontStar, sb, starLeft, centerY);
 
         if (hoveredImgIndex == e.Index)
         {
-            using var xf = new Font("Segoe UI", 10f, FontStyle.Bold);
             using var xb = new SolidBrush(Shift(settings.FgColor, 0.4f));
-            g.DrawString("Ã—", xf, xb, xLeft, centerY - 1);
+            g.DrawString("Ã—", FontX, xb, xLeft, centerY - 1);
         }
 
         int lx = tx + Thumb + 12;
-        using var nf = new Font("Segoe UI", 9f);
         using var nb = new SolidBrush(sel ? settings.FgColor : settings.FgColor);
-        g.DrawString("Image", nf, nb, lx, r.Top + 12);
+        g.DrawString("Image", FontName, nb, lx, r.Top + 12);
 
-        using var tf = new Font("Segoe UI", 8f);
         using var db = new SolidBrush(Shift(settings.FgColor, 0.4f));
         string dims = "";
         try
@@ -451,10 +472,10 @@ public class PastePopupForm : Form
             dims = $"{img.Width}x{img.Height}";
         }
         catch { }
-        g.DrawString(dims, tf, db, lx, r.Top + 32);
+        g.DrawString(dims, FontTime, db, lx, r.Top + 32);
 
         using var tm = new SolidBrush(Shift(settings.FgColor, 0.4f));
-        g.DrawString(TimeAgo(item.Time), tf, tm, lx, r.Bottom - 18);
+        g.DrawString(TimeAgo(item.Time), FontTime, tm, lx, r.Bottom - 18);
     }
 
     private static Color Shift(Color c, float factor)
@@ -463,16 +484,16 @@ public class PastePopupForm : Form
         if (lum > 0.5f)
         {
             int r = Math.Max(0, (int)(c.R * (1 - factor)));
-            int g = Math.Max(0, (int)(c.G * (1 - factor)));
+            int g2 = Math.Max(0, (int)(c.G * (1 - factor)));
             int b = Math.Max(0, (int)(c.B * (1 - factor)));
-            return Color.FromArgb(r, g, b);
+            return Color.FromArgb(r, g2, b);
         }
         else
         {
             int r = Math.Min(255, (int)(c.R + (255 - c.R) * factor));
-            int g = Math.Min(255, (int)(c.G + (255 - c.G) * factor));
+            int g2 = Math.Min(255, (int)(c.G + (255 - c.G) * factor));
             int b = Math.Min(255, (int)(c.B + (255 - c.B) * factor));
-            return Color.FromArgb(r, g, b);
+            return Color.FromArgb(r, g2, b);
         }
     }
 
